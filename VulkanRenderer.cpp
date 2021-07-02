@@ -16,8 +16,9 @@ int VulkanRenderer::Init(GLFWwindow* newWindow)
 	try
 	{
 		CreateInstance();
+		SetupDebugMessenger();
 		GetPhysicalDevice();
-		CreateLogicalDevice();
+		CreateLogicalDevice();	
 	}
 	catch (const std::runtime_error &e)
 	{
@@ -30,6 +31,10 @@ int VulkanRenderer::Init(GLFWwindow* newWindow)
 
 void VulkanRenderer::Cleanup()
 {
+	if (enableValidationLayers)
+	{
+		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+	}
 	vkDestroyDevice(mainDevice.logicalDevice, nullptr);
 	vkDestroyInstance(instance, nullptr);
 }
@@ -52,33 +57,55 @@ void VulkanRenderer::CreateInstance()
 	createInfo.pApplicationInfo = &appInfo;
 
 	// Create list to hold instance extensions
-	std::vector<const char*> instaneExtensions = std::vector<const char*>();
+	//std::vector<const char*> instaneExtensions = std::vector<const char*>();
 
 	// Set up extensions Instance will use
-	uint32_t glfwExtensionCount = 0;		// GLFW may require multiple extensions
-	const char** glfwExtensions;			// Extensions passed as array of cstrings, so need pointer (the array) to pointer (the cstring)
+	//uint32_t glfwExtensionCount = 0;		// GLFW may require multiple extensions
+	//const char** glfwExtensions;			// Extensions passed as array of cstrings, so need pointer (the array) to pointer (the cstring)
 
 	// Get GLFW extensions
-	glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+	//glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
 	// Add GLFW extensions to list of extensions
-	for (size_t i = 0; i < glfwExtensionCount; i++)
+	/*for (size_t i = 0; i < glfwExtensionCount; i++)
 	{
 		instaneExtensions.push_back(glfwExtensions[i]);
-	}
+	}*/
 
 	// Check Instance Extensions supported...
-	if (!CheckInstanceExtensionSupport(&instaneExtensions))
+	/*if (!CheckInstanceExtensionSupport(&instaneExtensions))
 	{
 		throw std::runtime_error("VkInstance does not support required extensions!");
-	}
+	}*/
 
-	createInfo.enabledExtensionCount = static_cast<uint32_t>(instaneExtensions.size());
-	createInfo.ppEnabledExtensionNames = instaneExtensions.data();
+	/*createInfo.enabledExtensionCount = static_cast<uint32_t>(instaneExtensions.size());
+	createInfo.ppEnabledExtensionNames = instaneExtensions.data();*/
+	auto extensions = GetRequiredExtensions();
+	createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+	createInfo.ppEnabledExtensionNames = extensions.data();
 
 	// TODO: Set up Validation Layers that Instance will use
-	createInfo.enabledLayerCount = 0;
-	createInfo.ppEnabledLayerNames = nullptr;
+	//createInfo.enabledLayerCount = 0;
+	//createInfo.ppEnabledLayerNames = nullptr;
+	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {};
+	if (enableValidationLayers)
+	{
+		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+		createInfo.ppEnabledLayerNames = validationLayers.data();
+
+		PopulateDebugMessengerCreateInfo(debugCreateInfo);
+		createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
+	}
+	else
+	{
+		createInfo.enabledLayerCount = 0;
+		createInfo.pNext = nullptr;
+	}
+
+	if (enableValidationLayers && !CheckValidationLayerSupport())
+	{
+		throw std::runtime_error("Validation layers requested, but not available!");
+	}
 
 	// Create instance
 	VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
@@ -128,6 +155,29 @@ void VulkanRenderer::CreateLogicalDevice()
 	vkGetDeviceQueue(mainDevice.logicalDevice, indices.graphicsFamily, 0, &graphicsQueue);
 }
 
+VkResult VulkanRenderer::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)
+{
+	auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+
+	if (func != nullptr)
+	{
+		return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+	}
+	else
+	{
+		return VK_ERROR_EXTENSION_NOT_PRESENT;
+	}
+}
+
+void VulkanRenderer::DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator)
+{
+	auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+	if (func != nullptr) 
+	{
+		func(instance, debugMessenger, pAllocator);
+	}
+}
+
 void VulkanRenderer::GetPhysicalDevice()
 {
 	// Enumerate Physical devices the vkInstance can access
@@ -156,6 +206,35 @@ void VulkanRenderer::GetPhysicalDevice()
 			break;
 		}
 	}
+}
+
+// === This function will return the required list of extensions based on whether validation layers are enabled or not:
+std::vector<const char*> VulkanRenderer::GetRequiredExtensions()
+{
+	// Set up extensions Instance will use
+	uint32_t glfwExtensionCount = 0;		// GLFW may require multiple extensions
+	const char** glfwExtensions;			// Extensions passed as array of cstrings, so need pointer (the array) to pointer (the cstring)
+
+	// Get GLFW extensions
+	glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+	// Create list to hold instance extensions
+	std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+
+	if (enableValidationLayers)
+	{
+		// Add GLFW extensions to list of extensions
+		// The extensions specified by GLFW are always required, but the debug messenger extension is conditionally added. 
+		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+	}
+
+	// Check Instance Extensions supported...
+	if (!CheckInstanceExtensionSupport(&extensions))
+	{
+		throw std::runtime_error("VkInstance does not support required extensions!");
+	}
+
+	return extensions;
 }
 
 bool VulkanRenderer::CheckInstanceExtensionSupport(std::vector<const char*>* checkExtensions)
@@ -206,6 +285,37 @@ bool VulkanRenderer::CheckDeviceSuitable(VkPhysicalDevice device)
 	return indices.isValid();
 }
 
+// === Checking Layers
+bool VulkanRenderer::CheckValidationLayerSupport()
+{
+	uint32_t layerCount;
+	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+
+	std::vector<VkLayerProperties> availableLayers(layerCount);
+	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+
+	for (const char* layerName : validationLayers)
+	{
+		bool layerFound = false;
+
+		for (const auto& layerProperties : availableLayers)
+		{
+			if (strcmp(layerName, layerProperties.layerName) == 0)
+			{
+				layerFound = true;
+				break;
+			}
+		}
+
+		if (!layerFound)
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
 QueueFamilyIndices VulkanRenderer::GetQueueFamilies(VkPhysicalDevice device)
 {
 	QueueFamilyIndices indices;
@@ -239,3 +349,42 @@ QueueFamilyIndices VulkanRenderer::GetQueueFamilies(VkPhysicalDevice device)
 
 	return indices;
 }
+
+//VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: Diagnostic message
+//VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT : Informational message like the creation of a resource
+//VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT : Message about behavior that is not necessarily an error, but very likely a bug in your application
+//VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT : Message about behavior that is invalidand may cause crashes
+VKAPI_ATTR VkBool32 VKAPI_CALL VulkanRenderer::DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
+{
+	std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
+
+	return VK_FALSE;
+}
+
+void VulkanRenderer::SetupDebugMessenger()
+{
+	if (!enableValidationLayers)
+	{
+		return;
+	}
+
+	VkDebugUtilsMessengerCreateInfoEXT debugInfo;
+	PopulateDebugMessengerCreateInfo(debugInfo);
+
+	if (CreateDebugUtilsMessengerEXT(instance, &debugInfo, nullptr, &debugMessenger) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to set up debug messenger!");
+	}
+}
+
+void VulkanRenderer::PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& debugInfo)
+{
+	//  Filling a structure with details about the messenger and its callback
+	debugInfo = {};
+	debugInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+	debugInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	debugInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+	debugInfo.pfnUserCallback = DebugCallback;
+}
+
+
