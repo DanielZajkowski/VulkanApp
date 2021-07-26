@@ -5,16 +5,12 @@
 
 #include <stdexcept>
 #include <vector>
+#include <set>
 #include <cstring>
 #include <iostream>
 
+#include "VulkanValidation.h"
 #include "Utilities.h"
-
-#ifdef NDEBUG
-	const bool enableValidationLayers = false;
-#else
-	const bool enableValidationLayers = true;
-#endif // NDEBUG
 
 class VulkanRenderer
 {
@@ -28,22 +24,26 @@ public:
 private:
 	GLFWwindow* window;
 
+	// Vulkan Components
+	VkInstance instance;
+	VkDebugUtilsMessengerEXT debugMessenger;
 	struct 
 	{
 		VkPhysicalDevice physicalDevice;
 		VkDevice logicalDevice;
 	} mainDevice;
-
 	VkQueue graphicsQueue;
-
-	// Vulkan Components
-	VkInstance instance;
-	VkDebugUtilsMessengerEXT debugMessenger;
+	VkQueue presentationQueue;
+	VkSurfaceKHR surface;
 
 	// Vulkan Functions
 	// - Create Functions
 	void CreateInstance();
+	void CreateDebugMessenger();
 	void CreateLogicalDevice();
+	void CreateSurface();
+
+	// - Debug Functions
 	VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
 	void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);
 
@@ -54,17 +54,12 @@ private:
 	// - Support Functions
 	// -- Checker Functions
 	bool CheckInstanceExtensionSupport(std::vector<const char*>* checkExtensions);
+	bool CheckDeviceExtensionSupport(VkPhysicalDevice device);
 	bool CheckDeviceSuitable(VkPhysicalDevice device);
 	bool CheckValidationLayerSupport();
 
 	// -- Getter Functions
 	QueueFamilyIndices GetQueueFamilies(VkPhysicalDevice device);
-
-	const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
-
-	static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
-
-	void SetupDebugMessenger();
-	void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& debugInfo);
+	SwapChainDetails GetSwapChainDetails(VkPhysicalDevice device);
 };
 

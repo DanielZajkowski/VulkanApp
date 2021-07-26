@@ -16,9 +16,10 @@ int VulkanRenderer::Init(GLFWwindow* newWindow)
 	try
 	{
 		CreateInstance();
-		SetupDebugMessenger();
+		CreateDebugMessenger();
+		CreateSurface();
 		GetPhysicalDevice();
-		CreateLogicalDevice();	
+		CreateLogicalDevice();		
 	}
 	catch (const std::runtime_error &e)
 	{
@@ -31,11 +32,12 @@ int VulkanRenderer::Init(GLFWwindow* newWindow)
 
 void VulkanRenderer::Cleanup()
 {
+	vkDestroySurfaceKHR(instance, surface, nullptr);
+	vkDestroyDevice(mainDevice.logicalDevice, nullptr);
 	if (enableValidationLayers)
 	{
 		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
 	}
-	vkDestroyDevice(mainDevice.logicalDevice, nullptr);
 	vkDestroyInstance(instance, nullptr);
 }
 
@@ -116,26 +118,53 @@ void VulkanRenderer::CreateInstance()
 	}
 }
 
+void VulkanRenderer::CreateDebugMessenger()
+{
+	// Only create message if validation enabled
+	if (!enableValidationLayers)
+	{
+		return;
+	}
+
+	VkDebugUtilsMessengerCreateInfoEXT debugInfo;
+	PopulateDebugMessengerCreateInfo(debugInfo);
+
+	// Create debug message with custom create function
+	if (CreateDebugUtilsMessengerEXT(instance, &debugInfo, nullptr, &debugMessenger) != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to set up debug messenger!");
+	}
+}
+
 void VulkanRenderer::CreateLogicalDevice()
 {
 	// Get the queue family indices for the chosen Physical Device
 	QueueFamilyIndices indices = GetQueueFamilies(mainDevice.physicalDevice);
 
-	// Queue the logical device needs to create and info to do so (Only 1 for now, will add more later)
-	VkDeviceQueueCreateInfo queueCreateInfo = {};
-	queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	queueCreateInfo.queueFamilyIndex = indices.graphicsFamily;			// The index of the family to create a queue from
-	queueCreateInfo.queueCount = 1;										// Number of queue to create
-	float priority = 1.0;
-	queueCreateInfo.pQueuePriorities = &priority;						// Vulkan needs to know how to handle multiple queues, so decide priority (1 = highest priority)
+	// Vector for queue creation information, and set for family indices
+	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+	std::set<int> queueFamilyIndices = { indices.graphicsFamily, indices.presentationFamily };
+
+	// Queues the logical device needs to create and info to do so
+	for (int queueFamilyIndex : queueFamilyIndices)
+	{
+		VkDeviceQueueCreateInfo queueCreateInfo = {};
+		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queueCreateInfo.queueFamilyIndex = queueFamilyIndex;				// The index of the family to create a queue from
+		queueCreateInfo.queueCount = 1;										// Number of queue to create
+		float priority = 1.0;
+		queueCreateInfo.pQueuePriorities = &priority;						// Vulkan needs to know how to handle multiple queues, so decide priority (1 = highest priority)
+
+		queueCreateInfos.push_back(queueCreateInfo);
+	}
 
 	// Information to create logical device (sometimes called "device")
 	VkDeviceCreateInfo deviceCreateInfo = {};		// Creating an empty struct
 	deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	deviceCreateInfo.queueCreateInfoCount = 1;							// Number of Queue Create Infos
-	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;				// List of queue infos so device can create required queues
-	deviceCreateInfo.enabledExtensionCount = 0;							// Number of enabled logical device extensions
-	deviceCreateInfo.ppEnabledExtensionNames = nullptr;					// List of enabled logical device extensions
+	deviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());		// Number of Queue Create Infos
+	deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();								// List of queue infos so device can create required queues
+	deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());	// Number of enabled logical device extensions
+	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();							// List of enabled logical device extensions
 
 	// Physical Device Features the Logical Device will be using
 	VkPhysicalDeviceFeatures deviceFeatures = {};
@@ -153,6 +182,18 @@ void VulkanRenderer::CreateLogicalDevice()
 	// So we want handle to queues
 	// From given logical device, of given Queue Family, of given Queue Index (0 since only one queue), place reference in given VkQueue
 	vkGetDeviceQueue(mainDevice.logicalDevice, indices.graphicsFamily, 0, &graphicsQueue);
+	vkGetDeviceQueue(mainDevice.logicalDevice, indices.presentationFamily, 0, &presentationQueue);
+}
+
+void VulkanRenderer::CreateSurface()
+{
+	// Create Surface (creates a surface create info struct, runs the create surface function, returns result)
+	VkResult result = glfwCreateWindowSurface(instance, window, nullptr, &surface);
+
+	if (result != VK_SUCCESS)
+	{
+		throw std::runtime_error("Failed to create a surface!");
+	}
 }
 
 VkResult VulkanRenderer::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)
@@ -269,6 +310,44 @@ bool VulkanRenderer::CheckInstanceExtensionSupport(std::vector<const char*>* che
 	return true;
 }
 
+bool VulkanRenderer::CheckDeviceExtensionSupport(VkPhysicalDevice device)
+{
+	// Get device extension count
+	uint32_t extensionCount = 0;
+	vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+
+	// If no extensions found, return failure 
+	if (extensionCount == 0)
+	{
+		return false;
+	}
+
+	// Populate list of extensions
+	std::vector<VkExtensionProperties> extensions(extensionCount);
+	vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, extensions.data());
+
+	// Check for extension
+	for (const auto& deviceExtension : deviceExtensions)
+	{
+		bool hasExtension = false;
+		for (const auto& extension : extensions)
+		{
+			if (strcmp(deviceExtension, extension.extensionName) == 0)
+			{
+				hasExtension = true;
+				break;
+			}
+		}
+
+		if (!hasExtension)
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
 bool VulkanRenderer::CheckDeviceSuitable(VkPhysicalDevice device)
 {
 
@@ -282,7 +361,16 @@ bool VulkanRenderer::CheckDeviceSuitable(VkPhysicalDevice device)
 
 	QueueFamilyIndices indices = GetQueueFamilies(device);
 
-	return indices.isValid();
+	bool extensionsSupported = CheckDeviceExtensionSupport(device);
+
+	bool swapChainValid = false;
+	if (extensionsSupported)
+	{
+		SwapChainDetails swapChainDetails = GetSwapChainDetails(device);
+		swapChainValid = !swapChainDetails.presentationModes.empty() && !swapChainDetails.formats.empty();
+	}
+
+	return indices.isValid() && extensionsSupported && swapChainValid;
 }
 
 // === Checking Layers
@@ -338,6 +426,15 @@ QueueFamilyIndices VulkanRenderer::GetQueueFamilies(VkPhysicalDevice device)
 			indices.graphicsFamily = i;		// If queue family is valid, then get index
 		}
 
+		// Check if Queue Family supports presentation
+		VkBool32 presentationSupport = false;
+		vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentationSupport);
+		// Check if queue is presentation type (can be both graphics and presentation)
+		if (queueFamily.queueCount > 0 && presentationSupport)
+		{
+			indices.presentationFamily = i;
+		}
+
 		// Check if queue family indices are in a valid state, stop searching if so
 		if (indices.isValid())
 		{
@@ -350,41 +447,35 @@ QueueFamilyIndices VulkanRenderer::GetQueueFamilies(VkPhysicalDevice device)
 	return indices;
 }
 
-//VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: Diagnostic message
-//VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT : Informational message like the creation of a resource
-//VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT : Message about behavior that is not necessarily an error, but very likely a bug in your application
-//VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT : Message about behavior that is invalidand may cause crashes
-VKAPI_ATTR VkBool32 VKAPI_CALL VulkanRenderer::DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
+SwapChainDetails VulkanRenderer::GetSwapChainDetails(VkPhysicalDevice device)
 {
-	std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
+	SwapChainDetails swapChainDetails;
 
-	return VK_FALSE;
-}
+	// -- CAPABILITIES --
+	// Get the surface capabilities for the given surface on the given physical device
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &swapChainDetails.surfaceCapabilities);
 
-void VulkanRenderer::SetupDebugMessenger()
-{
-	if (!enableValidationLayers)
+	// -- FORMATS -- 
+	uint32_t formatCount = 0;
+	vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
+
+	// If formats returned, get list of formats
+	if (formatCount != 0)
 	{
-		return;
+		swapChainDetails.formats.resize(formatCount);
+		vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, swapChainDetails.formats.data());
 	}
 
-	VkDebugUtilsMessengerCreateInfoEXT debugInfo;
-	PopulateDebugMessengerCreateInfo(debugInfo);
+	// -- PRESENTATION MODES --
+	uint32_t presentationCount = 0;
+	vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentationCount, nullptr);
 
-	if (CreateDebugUtilsMessengerEXT(instance, &debugInfo, nullptr, &debugMessenger) != VK_SUCCESS)
+	// If presentation returned, get list of presentation modes
+	if (presentationCount != 0)
 	{
-		throw std::runtime_error("Failed to set up debug messenger!");
+		swapChainDetails.presentationModes.resize(presentationCount);
+		vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentationCount, swapChainDetails.presentationModes.data());
 	}
+
+	return swapChainDetails;
 }
-
-void VulkanRenderer::PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& debugInfo)
-{
-	//  Filling a structure with details about the messenger and its callback
-	debugInfo = {};
-	debugInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-	debugInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-	debugInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-	debugInfo.pfnUserCallback = DebugCallback;
-}
-
-
