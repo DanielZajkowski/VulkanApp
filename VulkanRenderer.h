@@ -8,6 +8,7 @@
 #include <set>
 #include <cstring>
 #include <iostream>
+#include <algorithm>
 
 #include "VulkanValidation.h"
 #include "Utilities.h"
@@ -25,6 +26,7 @@ private:
 	GLFWwindow* window;
 
 	// Vulkan Components
+	// - Main
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT debugMessenger;
 	struct 
@@ -35,6 +37,12 @@ private:
 	VkQueue graphicsQueue;
 	VkQueue presentationQueue;
 	VkSurfaceKHR surface;
+	VkSwapchainKHR swapchain;
+	std::vector<SwapchainImage> swapchainImages;
+
+	// - Utility
+	VkFormat swapchainImageFormat;
+	VkExtent2D swapchainExtent;
 
 	// Vulkan Functions
 	// - Create Functions
@@ -42,6 +50,7 @@ private:
 	void CreateDebugMessenger();
 	void CreateLogicalDevice();
 	void CreateSurface();
+	void CreateSwapchain();
 
 	// - Debug Functions
 	VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
@@ -60,6 +69,14 @@ private:
 
 	// -- Getter Functions
 	QueueFamilyIndices GetQueueFamilies(VkPhysicalDevice device);
-	SwapChainDetails GetSwapChainDetails(VkPhysicalDevice device);
+	SwapChainDetails GetSwapchainDetails(VkPhysicalDevice device);
+
+	// -- Choose Functions
+	VkSurfaceFormatKHR ChooseBestSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats);
+	VkPresentModeKHR ChooseBestPresentationMode(const std::vector<VkPresentModeKHR> presentationModes);
+	VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities);
+
+	// -- Create Functions
+	VkImageView CreateImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
 };
 
