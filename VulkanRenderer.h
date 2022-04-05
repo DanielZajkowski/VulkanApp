@@ -9,6 +9,7 @@
 #include <cstring>
 #include <iostream>
 #include <algorithm>
+#include <array>
 
 #include "VulkanValidation.h"
 #include "Utilities.h"
@@ -41,7 +42,9 @@ private:
 	std::vector<SwapchainImage> swapchainImages;
 
 	// - Pipeline
+	VkPipeline graphicsPipeline;
 	VkPipelineLayout pipelineLayout;
+	VkRenderPass renderPass;
 
 	// - Utility
 	VkFormat swapchainImageFormat;
