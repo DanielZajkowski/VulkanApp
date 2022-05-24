@@ -35,6 +35,10 @@ int VulkanRenderer::Init(GLFWwindow* newWindow)
 
 void VulkanRenderer::Cleanup()
 {
+	for (auto framebuffer : swapchainFramebuffers)
+	{
+		vkDestroyFramebuffer(mainDevice.logicalDevice, framebuffer, nullptr);
+	}
 	vkDestroyPipeline(mainDevice.logicalDevice, graphicsPipeline, nullptr);
 	vkDestroyPipelineLayout(mainDevice.logicalDevice, pipelineLayout, nullptr);
 	vkDestroyRenderPass(mainDevice.logicalDevice, renderPass, nullptr);
@@ -210,7 +214,7 @@ void VulkanRenderer::CreateSurface()
 void VulkanRenderer::CreateSwapchain()
 {
 	// Get Swap Chain details so we can pick best settings
-	SwapChainDetails swapChainDetails = GetSwapchainDetails(mainDevice.physicalDevice);
+	SwapchainDetails swapChainDetails = GetSwapchainDetails(mainDevice.physicalDevice);
 
 	// Find optimal surface values for our swap chain
 	// Choose best surface format
@@ -542,6 +546,33 @@ void VulkanRenderer::CreateGraphicsPipeline()
 	vkDestroyShaderModule(mainDevice.logicalDevice, vertexShaderModule, nullptr);
 }
 
+void VulkanRenderer::CreateFramebuffer()
+{
+	// Resize framebuffer count to equal swap chain image count
+	swapchainFramebuffers.resize(swapchainImages.size());
+
+	// Create a framebuffer for each swap chain image
+	for (size_t i = 0; i < swapchainFramebuffers.size(); i++)
+	{
+		std::array<VkImageView, 1> attachments = { swapchainImages[i].imageView };
+
+		VkFramebufferCreateInfo framebufferCreateInfo = {};
+		framebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+		framebufferCreateInfo.renderPass = renderPass;										// Render Pass layout the Framebuffer will be used with
+		framebufferCreateInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+		framebufferCreateInfo.pAttachments = attachments.data();							// List of attachments (1:1 with Render Pass)
+		framebufferCreateInfo.width = swapchainExtent.width;								// Framebuffer width
+		framebufferCreateInfo.height = swapchainExtent.height;								// Framebuffer height
+		framebufferCreateInfo.layers = 1;													// Framebuffer layers
+
+		VkResult result = vkCreateFramebuffer(mainDevice.logicalDevice, &framebufferCreateInfo, nullptr, &swapchainFramebuffers[i]);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create a Framebuffer!");
+		}
+	}
+}
+
 VkResult VulkanRenderer::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)
 {
 	auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
@@ -712,7 +743,7 @@ bool VulkanRenderer::CheckDeviceSuitable(VkPhysicalDevice device)
 	bool swapChainValid = false;
 	if (extensionsSupported)
 	{
-		SwapChainDetails swapChainDetails = GetSwapchainDetails(device);
+		SwapchainDetails swapChainDetails = GetSwapchainDetails(device);
 		swapChainValid = !swapChainDetails.presentationModes.empty() && !swapChainDetails.formats.empty();
 	}
 
@@ -793,9 +824,9 @@ QueueFamilyIndices VulkanRenderer::GetQueueFamilies(VkPhysicalDevice device)
 	return indices;
 }
 
-SwapChainDetails VulkanRenderer::GetSwapchainDetails(VkPhysicalDevice device)
+SwapchainDetails VulkanRenderer::GetSwapchainDetails(VkPhysicalDevice device)
 {
-	SwapChainDetails swapChainDetails;
+	SwapchainDetails swapChainDetails;
 
 	// -- CAPABILITIES --
 	// Get the surface capabilities for the given surface on the given physical device

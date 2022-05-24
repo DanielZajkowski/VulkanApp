@@ -40,6 +40,7 @@ private:
 	VkSurfaceKHR surface;
 	VkSwapchainKHR swapchain;
 	std::vector<SwapchainImage> swapchainImages;
+	std::vector<VkFramebuffer> swapchainFramebuffers;
 
 	// - Pipeline
 	VkPipeline graphicsPipeline;
@@ -59,6 +60,7 @@ private:
 	void CreateSwapchain();
 	void CreateRenderPass();
 	void CreateGraphicsPipeline();
+	void CreateFramebuffer();
 
 	// - Debug Functions
 	VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
@@ -77,7 +79,7 @@ private:
 
 	// -- Getter Functions
 	QueueFamilyIndices GetQueueFamilies(VkPhysicalDevice device);
-	SwapChainDetails GetSwapchainDetails(VkPhysicalDevice device);
+	SwapchainDetails GetSwapchainDetails(VkPhysicalDevice device);
 
 	// -- Choose Functions
 	VkSurfaceFormatKHR ChooseBestSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats);
